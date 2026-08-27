@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OncoScreen — Disease Prediction</title>
+<style>
+  :root{--bg:#F4F7F8;--panel:#FFFFFF;--border:#E1E8EB;--teal:#0D7A76;--teal-dark:#095652;--red:#C0392B;--amber:#C77F1A;--text:#20282A;--muted:#77878C;}
+  *{box-sizing:border-box;}html,body{margin:0;padding:0;background:var(--bg);}
+  body{font-family:'Inter',system-ui,-apple-system,sans-serif;color:var(--text);display:flex;justify-content:center;}
+  #app{width:100%;max-width:480px;min-height:100vh;background:var(--bg);}
+  header{padding:20px 18px 14px;background:var(--panel);border-bottom:1px solid var(--border);}
+  .brand{font-family:'Space Grotesk','Inter',sans-serif;font-weight:700;font-size:19px;color:var(--teal-dark);}
+  .brand span{color:var(--teal);}
+  .sub{font-size:11px;color:var(--muted);margin-top:4px;}
+  #metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border);border-bottom:1px solid var(--border);}
+  .metric{background:var(--panel);padding:10px 6px;text-align:center;}
+  .metric .val{font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:700;color:var(--teal-dark);}
+  .metric .lbl{font-size:8.5px;color:var(--muted);text-transform:uppercase;margin-top:2px;}
+  #form{padding:16px 18px 8px;}
+  .field{margin-bottom:16px;}
+  .field-head{display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:4px;}
+  .field-name{font-weight:600;color:var(--text);}
+  .field-val{font-family:'JetBrains Mono',monospace;color:var(--teal-dark);font-weight:700;}
+  input[type=range]{width:100%;height:5px;border-radius:3px;background:var(--border);appearance:none;outline:none;}
+  input[type=range]::-webkit-slider-thumb{appearance:none;width:18px;height:18px;border-radius:50%;background:var(--teal);cursor:pointer;border:2px solid white;box-shadow:0 0 0 1px var(--border);}
+  .field-range{display:flex;justify-content:space-between;font-size:9px;color:var(--muted);margin-top:2px;}
+  #resultCard{margin:8px 18px 16px;padding:16px;border-radius:14px;background:var(--panel);border:1px solid var(--border);}
+  #resultCard.malignant{border-color:var(--red);}#resultCard.benign{border-color:var(--teal);}
+  .result-label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;}
+  .result-main{display:flex;align-items:baseline;gap:8px;}
+  .result-class{font-family:'Space Grotesk','Inter',sans-serif;font-weight:700;font-size:20px;}
+  .result-class.malignant{color:var(--red);}.result-class.benign{color:var(--teal-dark);}
+  .result-prob{font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--muted);}
+  .gauge{height:8px;border-radius:4px;background:var(--border);margin-top:12px;overflow:hidden;}
+  .gauge-fill{height:100%;border-radius:4px;transition:width .3s;}
+  .disclaimer{font-size:10px;color:var(--muted);margin-top:12px;line-height:1.5;padding-top:10px;border-top:1px solid var(--border);}
+  #presets{padding:0 18px 24px;display:flex;gap:8px;}
+  .preset-btn{flex:1;font-size:11px;font-weight:600;padding:9px 6px;border-radius:8px;border:1px solid var(--border);background:var(--panel);color:var(--text);cursor:pointer;}
+</style></head>
+<body><div id="app">
+  <header><div class="brand">Onco<span>Screen</span></div>
+  <div class="sub">CodeAlpha ML Task 4 — Disease Prediction (real Wisconsin Breast Cancer dataset)</div></header>
+  <div id="metrics">
+    <div class="metric"><div class="val" id="mPrec">--</div><div class="lbl">Precision</div></div>
+    <div class="metric"><div class="val" id="mRec">--</div><div class="lbl">Recall</div></div>
+    <div class="metric"><div class="val" id="mF1">--</div><div class="lbl">F1-Score</div></div>
+    <div class="metric"><div class="val" id="mAuc">--</div><div class="lbl">ROC-AUC</div></div>
+  </div>
+  <div id="presets">
+    <button class="preset-btn" id="presetBenign">Load benign-like sample</button>
+    <button class="preset-btn" id="presetMalignant">Load malignant-like sample</button>
+  </div>
+  <div id="form"></div>
+  <div id="resultCard">
+    <div class="result-label">Prediction</div>
+    <div class="result-main"><span class="result-class" id="resultClass">—</span><span class="result-prob" id="resultProb"></span></div>
+    <div class="gauge"><div class="gauge-fill" id="gaugeFill"></div></div>
+    <div class="disclaimer">Trained on the Wisconsin Diagnostic Breast Cancer dataset (569 samples).
+      Educational internship deliverable, not a diagnostic device.</div>
+  </div>
+</div>
+<script>
+const MODEL = {"features":["worst perimeter","worst area","worst concave points","mean concave points","worst radius","mean radius","mean perimeter","mean area"],"scaler_mean":[106.625297,869.026593,0.113904,0.048344,16.177226,14.067213,91.557407,648.541099],"scaler_scale":[33.158555,552.318965,0.066711,0.038882,4.764775,3.495532,24.122679,344.565295],"coef":[-1.260692,-1.819295,-1.713949,-1.021987,-1.678933,0.360331,0.383447,0.002115],"intercept":0.485934,"ranges":{"worst perimeter":[50.41,251.2],"worst area":[185.2,4254.0],"worst concave points":[0.0,0.291],"mean concave points":[0.0,0.201],"worst radius":[7.93,36.04],"mean radius":[6.981,28.11],"mean perimeter":[43.79,188.5],"mean area":[143.5,2501.0]},"metrics":{"rf_full":{"auc":0.994,"accuracy":0.9474,"precision":0.9583,"recall":0.9583,"f1":0.9583},"deployed":{"auc":0.9927,"accuracy":0.9474,"precision":0.9714,"recall":0.9444,"f1":0.9577}}};
+const RANGES = {};
+MODEL.features.forEach(f => { RANGES[f] = MODEL.ranges[f]; });
+const BENIGN_SAMPLE = {}, MALIGNANT_SAMPLE = {};
+MODEL.features.forEach((f,i)=>{
+  const [lo,hi] = RANGES[f];
+  BENIGN_SAMPLE[f] = +(lo + (hi-lo)*0.2).toFixed(3);
+  MALIGNANT_SAMPLE[f] = +(lo + (hi-lo)*0.75).toFixed(3);
+});
+const formEl = document.getElementById('form');
+const sliders = {};
+function cssId(name){ return name.replace(/\s+/g,'_'); }
+MODEL.features.forEach(name=>{
+  const [min,max] = RANGES[name];
+  const def = +((min+max)/2).toFixed(3);
+  const field = document.createElement('div');
+  field.className='field';
+  field.innerHTML = `<div class="field-head"><span class="field-name">${name}</span><span class="field-val" id="val_${cssId(name)}">${def}</span></div>
+    <input type="range" id="slider_${cssId(name)}" min="${min}" max="${max}" step="${(max-min)/200}" value="${def}">
+    <div class="field-range"><span>${min}</span><span>${max}</span></div>`;
+  formEl.appendChild(field);
+  const slider = field.querySelector('input');
+  sliders[name]=slider;
+  slider.addEventListener('input', ()=>{
+    document.getElementById(`val_${cssId(name)}`).textContent = parseFloat(slider.value).toFixed(name.includes('concave')?3:1);
+    predict();
+  });
+});
+function predict(){
+  let z = MODEL.intercept;
+  MODEL.features.forEach((name,i)=>{
+    const raw = parseFloat(sliders[name].value);
+    const std = (raw - MODEL.scaler_mean[i]) / MODEL.scaler_scale[i];
+    z += MODEL.coef[i]*std;
+  });
+  const probBenign = 1/(1+Math.exp(-z));
+  const probMalignant = 1-probBenign;
+  const isMalignant = probMalignant>0.5;
+  const card = document.getElementById('resultCard');
+  const cls = document.getElementById('resultClass');
+  const prob = document.getElementById('resultProb');
+  const fill = document.getElementById('gaugeFill');
+  card.className = isMalignant?'malignant':'benign';
+  cls.className = 'result-class '+(isMalignant?'malignant':'benign');
+  cls.textContent = isMalignant?'Malignant risk':'Benign pattern';
+  prob.textContent = `${(probMalignant*100).toFixed(1)}% malignant probability`;
+  fill.style.width = `${(probMalignant*100).toFixed(1)}%`;
+  fill.style.background = isMalignant?'var(--red)':'var(--teal)';
+}
+function loadSample(sample){
+  MODEL.features.forEach(name=>{
+    sliders[name].value = sample[name];
+    document.getElementById(`val_${cssId(name)}`).textContent = parseFloat(sample[name]).toFixed(name.includes('concave')?3:1);
+  });
+  predict();
+}
+document.getElementById('presetBenign').addEventListener('click', ()=>loadSample(BENIGN_SAMPLE));
+document.getElementById('presetMalignant').addEventListener('click', ()=>loadSample(MALIGNANT_SAMPLE));
+document.getElementById('mPrec').textContent = (MODEL.metrics.deployed.precision*100).toFixed(1)+'%';
+document.getElementById('mRec').textContent = (MODEL.metrics.deployed.recall*100).toFixed(1)+'%';
+document.getElementById('mF1').textContent = (MODEL.metrics.deployed.f1*100).toFixed(1)+'%';
+document.getElementById('mAuc').textContent = MODEL.metrics.deployed.auc.toFixed(3);
+predict();
+</script></body></html>
